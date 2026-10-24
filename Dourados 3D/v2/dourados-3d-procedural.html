@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dourados 3D — Procedural v2</title>
+<link rel="stylesheet" media="print" onload="this.media='all'"
+  href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;700;800&display=swap">
+<style>
+  :root{
+    --ipe:#FFC63D; --ipe-rosa:#E96FA8; --terra:#A6402B;
+    --placa:#1B6E4A; --noite:#101720; --nevoa:#F3E9D8;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:100%;height:100%;overflow:hidden;background:var(--noite);
+    font-family:'Archivo',-apple-system,'Segoe UI',Roboto,sans-serif;color:var(--nevoa)}
+  canvas{display:block}
+
+  .placa{
+    position:fixed;top:14px;left:14px;z-index:10;
+    background:var(--placa);border:3px solid #fff;border-radius:10px;
+    padding:9px 16px 11px;box-shadow:0 6px 18px rgba(0,0,0,.45);user-select:none;
+  }
+  .placa h1{font-size:24px;letter-spacing:.14em;font-weight:800;color:#fff;line-height:1}
+  .placa .sub{font-size:10.5px;letter-spacing:.08em;color:#DFF2E7;margin-top:5px}
+  .placa .km{display:inline-block;margin-top:6px;font-size:9.5px;background:#fff;
+    color:var(--placa);border-radius:4px;padding:2px 7px;font-weight:700;letter-spacing:.06em}
+
+  .painel{
+    position:fixed;z-index:10;background:rgba(16,23,32,.82);backdrop-filter:blur(8px);
+    border:1px solid rgba(243,233,216,.18);border-radius:12px;padding:11px 13px;
+  }
+  .painel h2{font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;
+    color:var(--ipe);margin-bottom:8px;font-weight:700}
+  #marcos{bottom:14px;left:14px;max-height:46vh;overflow:auto}
+  #marcos button{
+    display:block;width:100%;text-align:left;background:none;border:none;cursor:pointer;
+    color:var(--nevoa);font-size:12.5px;padding:4px 6px;border-radius:6px;font-family:inherit;
+  }
+  #marcos button:hover,#marcos button:focus-visible{background:rgba(255,198,61,.16);outline:none}
+  #marcos button .dot{display:inline-block;width:8px;height:8px;border-radius:50%;
+    margin-right:8px;vertical-align:1px}
+
+  #modos{top:14px;right:14px;display:flex;gap:7px;padding:7px}
+  #modos button{
+    background:rgba(243,233,216,.08);border:1px solid rgba(243,233,216,.25);
+    color:var(--nevoa);font-size:12px;padding:7px 11px;border-radius:8px;cursor:pointer;
+    font-family:inherit;
+  }
+  #modos button:hover{border-color:var(--ipe);color:var(--ipe)}
+  #modos button.ativo{background:var(--ipe);border-color:var(--ipe);color:var(--noite);font-weight:700}
+
+  #dica{
+    position:fixed;bottom:14px;right:14px;z-index:10;font-size:11px;color:rgba(243,233,216,.65);
+    background:rgba(16,23,32,.6);padding:6px 10px;border-radius:8px;
+  }
+  #rotulo{
+    position:fixed;z-index:9;pointer-events:none;font-size:12px;font-weight:700;
+    color:var(--noite);background:var(--ipe);padding:3px 9px;border-radius:6px;
+    transform:translate(-50%,-130%);opacity:0;transition:opacity .25s;letter-spacing:.04em;
+  }
+  /* boot + erro */
+  #boot{position:fixed;inset:0;z-index:30;display:flex;flex-direction:column;gap:14px;
+    align-items:center;justify-content:center;background:var(--noite);transition:opacity .4s}
+  #boot .b{width:150px;height:4px;background:rgba(243,233,216,.15);border-radius:2px;overflow:hidden}
+  #boot .b i{display:block;height:100%;width:40%;background:var(--ipe);border-radius:2px;
+    animation:vai 1s ease-in-out infinite alternate}
+  @keyframes vai{from{margin-left:0}to{margin-left:60%}}
+  #boot span{font-size:12px;letter-spacing:.14em;color:rgba(243,233,216,.75)}
+  #erro{position:fixed;inset:auto 14px 14px 14px;z-index:40;display:none;
+    background:#4A1F1A;border:1px solid #F08A7A;border-radius:10px;padding:12px 14px;
+    font-size:12.5px;line-height:1.5;color:#FFD9D2}
+  @media(max-width:640px){ .placa h1{font-size:18px} #dica{display:none} }
+</style>
+</head>
+<body>
+
+<div id="boot"><div class="b"><i></i></div><span>CONSTRUINDO DOURADOS…</span></div>
+<div id="erro"></div>
+
+<div class="placa">
+  <h1>DOURADOS</h1>
+  <div class="sub">Mato Grosso do Sul · 22°13′S 54°48′W · alt. 430 m</div>
+  <span class="km">PROJETO 1 · v2 · GEOGRAFIA CONFERIDA</span>
+</div>
+
+<div class="painel" id="modos">
+  <button id="btnSobrevoo">▶ Sobrevoo</button>
+  <button id="btnOrbita" class="ativo">⟳ Órbita</button>
+  <button id="btnLivre">✋ Livre</button>
+</div>
+
+<div class="painel" id="marcos"><h2>Marcos reais da cidade</h2></div>
+
+<div id="dica">arraste: girar · scroll/pinça: zoom · botão direito: mover</div>
+<div id="rotulo"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+'use strict';
+// ============================================================
+// DOURADOS 3D v2 — geografia conferida em fontes reais:
+//  · Aeroporto e Cidade Universitária (UFGD/UEMS) a OESTE,
+//    na Av. Guaicurus / Rod. Dourados–Itahum (km 12)
+//  · Reserva Indígena de Dourados (Jaguapiru e Bororó) ao
+//    NORTE, colada ao anel viário, cortada pela MS-156
+//  · BR-163 a LESTE, com trevo de entrada
+//  · Douradão (Estádio Fredis Saldivar) na região norte
+//  · Figueiras centenárias da Av. Presidente Vargas
+//  · Córrego Água Boa a sudeste, com mata ciliar
+// ============================================================
+
+// ---- diagnóstico visível: nunca mais tela presa ----
+const elErro = document.getElementById('erro');
+function mostraErro(msg){
+  elErro.style.display='block';
+  elErro.textContent='Algo falhou ao construir a cena: '+msg;
+}
+window.addEventListener('error', e=>mostraErro(e.message));
+
+function iniciar(){
+try{
+
+if(typeof THREE==='undefined') throw new Error('three.js não carregou de nenhum CDN. Verifique a conexão.');
+
+const MOBILE = innerWidth<760 || 'ontouchstart' in window;
+
+const scene = new THREE.Scene();
+const renderer = new THREE.WebGLRenderer({antialias:!MOBILE});
+renderer.setPixelRatio(Math.min(devicePixelRatio, MOBILE?1.5:2));
+renderer.setSize(innerWidth,innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+const camera = new THREE.PerspectiveCamera(55, innerWidth/innerHeight, 1, 22000);
+
+// ---------- Céu de fim de tarde no cerrado ----------
+const skyMat = new THREE.ShaderMaterial({
+  side:THREE.BackSide, depthWrite:false,
+  uniforms:{topo:{value:new THREE.Color(0x1E3A5C)},
+            meio:{value:new THREE.Color(0xE8804F)},
+            base:{value:new THREE.Color(0xFFC97A)}},
+  vertexShader:`varying vec3 vP;void main(){vP=position;
+    gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+  fragmentShader:`varying vec3 vP;uniform vec3 topo,meio,base;
+    void main(){float h=normalize(vP).y;
+      vec3 c=h<0.12?mix(base,meio,smoothstep(-0.05,0.12,h))
+                   :mix(meio,topo,smoothstep(0.12,0.65,h));
+      gl_FragColor=vec4(c,1.0);}`
+});
+scene.add(new THREE.Mesh(new THREE.SphereGeometry(10500,24,16), skyMat));
+scene.fog = new THREE.FogExp2(0xEFB98A, 0.00019);
+
+const sol = new THREE.Mesh(new THREE.SphereGeometry(120,16,16),
+  new THREE.MeshBasicMaterial({color:0xFFE7B0, fog:false}));
+sol.position.set(-7800, 620, 1600); scene.add(sol);
+
+const luzSol = new THREE.DirectionalLight(0xFFD9A8, 1.35);
+luzSol.position.set(-1500, 950, 420);
+luzSol.castShadow = true;
+luzSol.shadow.mapSize.set(MOBILE?1024:2048, MOBILE?1024:2048);
+const S = 1400;
+Object.assign(luzSol.shadow.camera,{left:-S,right:S,top:S,bottom:-S,near:100,far:4500});
+luzSol.shadow.camera.updateProjectionMatrix();
+scene.add(luzSol);
+scene.add(new THREE.HemisphereLight(0xFFCF9E, 0x2E4A2B, 0.55));
+scene.add(new THREE.AmbientLight(0x557799, 0.28));
+
+// ---------- Parâmetros urbanos ----------
+const BLOCO=100, RUA=16, PASSO=BLOCO+RUA;
+const NX=15, NZ=11;
+const LIM_X=NX*PASSO/2, LIM_Z=NZ*PASSO/2;   // ±870 × ±638
+const AV_L=40;                               // Av. Marcelino Pires (L-O, z=0)
+const X_HAYEL =  2*PASSO;                    // Av. Hayel Bon Faker (N-S)
+const X_VARGAS= -2*PASSO;                    // Av. Presidente Vargas (N-S)
+const X_BR163 =  1560;                       // BR-163 a leste
+const X_OESTE = -LIM_X-120;                  // saída p/ Guaicurus/Itahum
+const rnd=(()=>{let s=22213;return()=>{s=(s*16807)%2147483647;return s/2147483647;};})();
+
+// util: retângulo simples
+function plano(w,d,cor,x,z,y=0.05,ry=0){
+  const m=new THREE.Mesh(new THREE.PlaneGeometry(w,d),
+    new THREE.MeshLambertMaterial({color:cor}));
+  m.rotation.x=-Math.PI/2; m.rotation.z=ry; m.position.set(x,y,z);
+  m.receiveShadow=true; scene.add(m); return m;
+}
+function caixa(w,h,d,cor,x,z,ry=0,y=0){
+  const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),
+    new THREE.MeshLambertMaterial({color:cor}));
+  m.position.set(x,y+h/2,z); m.rotation.y=ry;
+  m.castShadow=m.receiveShadow=true; scene.add(m); return m;
+}
+
+// ---------- Chão geral e malha urbana ----------
+plano(18000,18000,0x5E7A3A,0,0,-0.25);                    // planalto
+plano(NX*PASSO+240,NZ*PASSO+240,0x3A3A40,0,0,0);          // asfalto do núcleo
+
+const zonasLivres=[];
+const livre=(x,z)=>zonasLivres.some(a=>Math.abs(x-a.x)<a.rx&&Math.abs(z-a.z)<a.rz);
+
+const geoQuadra=new THREE.PlaneGeometry(BLOCO,BLOCO);
+const matQuadra=new THREE.MeshLambertMaterial({color:0x8E8878});
+for(let i=0;i<NX;i++)for(let j=0;j<NZ;j++){
+  const x=-LIM_X+PASSO/2+i*PASSO, z=-LIM_Z+PASSO/2+j*PASSO;
+  if(Math.abs(z)<AV_L/2+8) continue;
+  const q=new THREE.Mesh(geoQuadra,matQuadra);
+  q.rotation.x=-Math.PI/2; q.position.set(x,0.05,z); q.receiveShadow=true;
+  scene.add(q);
+}
+
+// ---------- Grandes eixos ----------
+// Av. Marcelino Pires + prolongamentos (Guaicurus a oeste, trevo a leste)
+plano(NX*PASSO+240,AV_L,0x36363C,0,0,0.04);
+plano(3900,26,0x36363C,X_OESTE-1950,0,0.04);              // Guaicurus / Rod. Itahum
+plano(X_BR163-LIM_X+140,26,0x36363C,(LIM_X+X_BR163)/2+60,0,0.04);
+plano(NX*PASSO+240,7,0x4F7A34,0,0,0.12);                  // canteiro central
+const faixa=new THREE.MeshBasicMaterial({color:0xC9A23C});
+for(const off of[-AV_L/2+4,AV_L/2-4]){
+  const f=new THREE.Mesh(new THREE.PlaneGeometry(NX*PASSO+240,0.8),faixa);
+  f.rotation.x=-Math.PI/2;f.position.set(0,0.1,off);scene.add(f);
+}
+// Avenidas N-S: Presidente Vargas e Hayel Bon Faker
+for(const ax of[X_VARGAS,X_HAYEL]){
+  plano(24,NZ*PASSO+240,0x36363C,ax,0,0.08);
+  zonasLivres.push({x:ax,z:0,rx:14,rz:LIM_Z+120});
+}
+// Anel viário em volta do núcleo
+const ANEL_X=LIM_X+120, ANEL_Z=LIM_Z+120;
+plano(2*ANEL_X+24,22,0x44444B,0,-ANEL_Z,0.03);
+plano(2*ANEL_X+24,22,0x44444B,0, ANEL_Z,0.03);
+plano(22,2*ANEL_Z+24,0x44444B,-ANEL_X,0,0.03);
+plano(22,2*ANEL_Z+24,0x44444B, ANEL_X,0,0.03);
+// BR-163 (leste, levemente diagonal) e MS-156 (norte, rumo à Reserva)
+plano(30,7000,0x40444C,X_BR163,0,0.03,0.10);
+plano(20,2400,0x4A4A50,120,-ANEL_Z-1200,0.03);            // MS-156
+
+// ============================================================
+// ZONAS ESPECIAIS (posições conferidas)
+// ============================================================
+
+// --- Praça Antônio João (norte da avenida) e Catedral (sul) ---
+const PR={x:-PASSO/2-8, z:-(AV_L/2+8+BLOCO/2)};
+zonasLivres.push({x:PR.x,z:PR.z,rx:70,rz:70});
+plano(BLOCO+10,BLOCO+10,0x57813A,PR.x,PR.z,0.16);
+for(const a of[Math.PI/4,-Math.PI/4]){
+  const c=plano(140,6,0xB9AE95,PR.x,PR.z,0.18); c.rotation.z=a;
+}
+const obelisco=new THREE.Mesh(new THREE.CylinderGeometry(1.2,2.6,18,4),
+  new THREE.MeshLambertMaterial({color:0xE7E2D4}));
+obelisco.position.set(PR.x,9,PR.z);obelisco.castShadow=true;scene.add(obelisco);
+
+const CAT={x:PR.x, z:AV_L/2+8+BLOCO/2};
+zonasLivres.push({x:CAT.x,z:CAT.z,rx:70,rz:70});
+(function catedral(){
+  const g=new THREE.Group();
+  const branco=new THREE.MeshLambertMaterial({color:0xF2EEE2});
+  const tri=new THREE.Shape();
+  tri.moveTo(-22,0);tri.lineTo(22,0);tri.lineTo(0,30);tri.closePath();
+  const nave=new THREE.Mesh(new THREE.ExtrudeGeometry(tri,{depth:56,bevelEnabled:false}),branco);
+  nave.rotation.y=Math.PI/2;nave.position.set(-28,0,0);
+  nave.castShadow=nave.receiveShadow=true;g.add(nave);
+  const vitral=new THREE.Mesh(new THREE.PlaneGeometry(16,20),
+    new THREE.MeshBasicMaterial({color:0xF7B733}));
+  vitral.position.set(-28.5,11,0);vitral.rotation.y=-Math.PI/2;g.add(vitral);
+  const torre=new THREE.Mesh(new THREE.BoxGeometry(7,58,7),branco);
+  torre.position.set(20,29,-20);torre.castShadow=true;g.add(torre);
+  const c1=new THREE.Mesh(new THREE.BoxGeometry(0.9,12,0.9),branco);
+  c1.position.set(20,64,-20);g.add(c1);
+  const c2=new THREE.Mesh(new THREE.BoxGeometry(6,0.9,0.9),branco);
+  c2.position.set(20,66,-20);g.add(c2);
+  const adro=plano(100,100,0xB9AE95,0,0,0.17);g.add(adro);adro.position.set(0,0.17,0);
+  scene.remove(adro);g.add(adro);
+  g.position.set(CAT.x,0,CAT.z);scene.add(g);
+})();
+
+// --- Parque Antenor Martins (Parque do Lago), oeste do núcleo ---
+const PQ={x:-620,z:-330};
+zonasLivres.push({x:PQ.x,z:PQ.z,rx:240,rz:210});
+const gPq=new THREE.Mesh(new THREE.CircleGeometry(235,40),
+  new THREE.MeshLambertMaterial({color:0x4E7C33}));
+gPq.rotation.x=-Math.PI/2;gPq.position.set(PQ.x,0.15,PQ.z);gPq.receiveShadow=true;scene.add(gPq);
+const lago=new THREE.Mesh(new THREE.CircleGeometry(140,48),
+  new THREE.MeshPhongMaterial({color:0x2E7DA6,specular:0xFFDDAA,shininess:120,
+    transparent:true,opacity:0.94}));
+lago.geometry.scale(1.3,0.78,1);
+lago.rotation.x=-Math.PI/2;lago.position.set(PQ.x,0.3,PQ.z);scene.add(lago);
+// pier e pista de caminhada
+caixa(30,1.2,5,0x8A6B4A,PQ.x+60,PQ.z,0,0.3);
+const pista=new THREE.Mesh(new THREE.RingGeometry(180,188,48),
+  new THREE.MeshLambertMaterial({color:0xB9AE95}));
+pista.rotation.x=-Math.PI/2;pista.position.set(PQ.x,0.22,PQ.z);scene.add(pista);
+
+// --- Shopping Avenida Center (Marcelino Pires, lado oeste) ---
+const SH={x:-720,z:110};
+zonasLivres.push({x:SH.x,z:SH.z,rx:120,rz:100});
+plano(210,160,0x55555C,SH.x,SH.z+18,0.1);                  // estacionamento
+caixa(150,14,90,0xD8CFC0,SH.x,SH.z-25);
+caixa(46,20,46,0xC9BFA8,SH.x+40,SH.z-25);
+const letreiro=caixa(30,6,2,0xA6402B,SH.x,SH.z+64,0,3);
+
+// --- Estádio Douradão (Fredis Saldivar), região norte ---
+const DO={x:520,z:-LIM_Z+140};
+zonasLivres.push({x:DO.x,z:DO.z,rx:150,rz:120});
+(function douradao(){
+  plano(280,210,0x4E7C33,DO.x,DO.z,0.12);
+  const anel=new THREE.Mesh(new THREE.CylinderGeometry(105,118,16,40,1,true),
+    new THREE.MeshLambertMaterial({color:0xC9C2B2,side:THREE.DoubleSide}));
+  anel.scale.set(1.25,1,0.9);anel.position.set(DO.x,8,DO.z);
+  anel.castShadow=true;scene.add(anel);
+  const campo=new THREE.Mesh(new THREE.CircleGeometry(88,32),
+    new THREE.MeshLambertMaterial({color:0x3F7A2E}));
+  campo.geometry.scale(1.25,0.82,1);
+  campo.rotation.x=-Math.PI/2;campo.position.set(DO.x,0.35,DO.z);scene.add(campo);
+  for(const dx of[-70,70]) caixa(3,22,3,0xB9B9C0,DO.x+dx,DO.z-95); // torres de luz
+  for(const dx of[-70,70]) caixa(3,22,3,0xB9B9C0,DO.x+dx,DO.z+95);
+})();
+
+// --- Reserva Indígena de Dourados (Jaguapiru e Bororó), NORTE ---
+const RI={x:120,z:-ANEL_Z-950};
+plano(2100,1750,0x6E7A38,RI.x,RI.z,0.01);                  // cerrado
+(function reserva(){
+  const casa=new THREE.BoxGeometry(1,1,1);casa.translate(0,0.5,0);
+  const casas=new THREE.InstancedMesh(casa,
+    new THREE.MeshLambertMaterial({color:0xC9B48E}),260);
+  casas.castShadow=true;
+  const m=new THREE.Matrix4(),p=new THREE.Vector3(),
+        q=new THREE.Quaternion(),e=new THREE.Vector3();
+  let n=0;
+  const aldeia=(cx,cz,qtd,raio)=>{
+    for(let k=0;k<qtd;k++){
+      const a=rnd()*6.28,r=rnd()*raio;
+      p.set(cx+Math.cos(a)*r,0,cz+Math.sin(a)*r*0.8);
+      q.setFromAxisAngle(new THREE.Vector3(0,1,0),Math.floor(rnd()*4)*Math.PI/2);
+      e.set(8+rnd()*5,3+rnd()*1.5,7+rnd()*4);
+      m.compose(p,q,e);casas.setMatrixAt(n++,m);
+    }
+  };
+  aldeia(-160,-ANEL_Z-520,120,420);   // Jaguapiru (mais perto da cidade)
+  aldeia(260,-ANEL_Z-1350,110,460);   // Bororó (mais ao norte)
+  casas.count=n;casas.instanceMatrix.needsUpdate=true;
+  scene.add(casas);
+  // caminhos de terra ligados à MS-156
+  plano(8,900,0x9C4A2F,-160,-ANEL_Z-520,0.02,0.5);
+  plano(8,900,0x9C4A2F,260,-ANEL_Z-1300,0.02,-0.4);
+})();
+
+// --- Cidade Universitária: UFGD + UEMS + HU (OESTE, Rod. Itahum km 12) ---
+const UF={x:-3050,z:-260};
+(function cidadeUniversitaria(){
+  plano(760,520,0x4E7C33,UF.x,UF.z,0.05);
+  const bloco=new THREE.MeshLambertMaterial({color:0xD9D3C4});
+  const faixaV=new THREE.MeshLambertMaterial({color:0x1B6E4A});
+  // UFGD Unidade II — blocos em pente
+  for(let i=0;i<8;i++){
+    const b=new THREE.Mesh(new THREE.BoxGeometry(85,9,20),bloco);
+    b.position.set(UF.x-260+(i%4)*125,4.5,UF.z-160+Math.floor(i/4)*90);
+    b.castShadow=b.receiveShadow=true;scene.add(b);
+    const f=new THREE.Mesh(new THREE.BoxGeometry(85.4,2.2,20.4),faixaV);
+    f.position.copy(b.position);f.position.y=9.6;scene.add(f);
+  }
+  caixa(60,13,40,0xC9BFA8,UF.x+210,UF.z-140);              // biblioteca central
+  // UEMS ao lado
+  for(let i=0;i<3;i++) caixa(70,8,18,0xDCCFB4,UF.x-180+i*110,UF.z+120);
+  // Hospital Universitário, junto à rodovia
+  const HU=caixa(90,18,44,0xEFEAE0,UF.x+240,UF.z+150);
+  const cruz1=caixa(3,10,1.5,0xC0392B,UF.x+240,UF.z+128,0,18);
+  const cruz2=caixa(10,3,1.5,0xC0392B,UF.x+240,UF.z+128,0,21.5);
+  // acesso à rodovia
+  plano(14,300,0x4A4A50,UF.x+40,UF.z+250,0.03);
+})();
+
+// --- 4ª Brigada de Cavalaria Mecanizada (início da Guaicurus) ---
+const BG={x:-1450,z:-170};
+(function brigada(){
+  plano(340,220,0x7A8556,BG.x,BG.z,0.04);
+  // muro
+  for(const[w,d,x,z]of[[340,3,BG.x,BG.z-110],[340,3,BG.x,BG.z+110],
+                       [3,220,BG.x-170,BG.z],[3,220,BG.x+170,BG.z]])
+    caixa(w,3.5,d,0xB9B4A2,x,z);
+  for(let i=0;i<4;i++) caixa(70,7,26,0x8A8F76,BG.x-110+i*74,BG.z-50);
+  caixa(50,9,30,0x8A8F76,BG.x-60,BG.z+55);
+  const mastro=caixa(1,26,1,0xDDDDDD,BG.x+90,BG.z+60);
+  caixa(10,6,0.4,0x2E7D46,BG.x+95.5,BG.z+60,0,20);          // bandeira
+})();
+
+// --- Aeroporto Francisco de Matos Pereira (fim da Guaicurus, ~14 km) ---
+const AE={x:-4350,z:-120};
+(function aeroporto(){
+  plano(1300,700,0x74853F,AE.x,AE.z,0.02);
+  const pista=plano(1150,42,0x2E2E33,AE.x,AE.z-80,0.06,0.14); // cabeceiras 06/24
+  for(let k=0;k<12;k++){
+    const tr=new THREE.Mesh(new THREE.PlaneGeometry(38,2.2),
+      new THREE.MeshBasicMaterial({color:0xE8E8E8}));
+    tr.rotation.x=-Math.PI/2;tr.rotation.z=0.14;
+    tr.position.set(AE.x-520+k*92,0.08,AE.z-80-(AE.x-520+k*92-AE.x)*0.14);
+    scene.add(tr);
+  }
+  plano(320,26,0x3A3A40,AE.x+60,AE.z+60,0.05);               // taxiway
+  plano(220,120,0x55555C,AE.x+60,AE.z+150,0.05);             // pátio
+  caixa(130,10,40,0xD8D2C2,AE.x+60,AE.z+220);                // terminal
+  const torre=caixa(9,30,9,0xC9C2B2,AE.x+170,AE.z+210);
+  caixa(13,5,13,0x88A6B8,AE.x+170,AE.z+210,0,30);            // cabine
+  // aviãozinho no pátio
+  caixa(26,3,3.4,0xF0F0F0,AE.x+30,AE.z+150);
+  caixa(3,2.4,20,0xF0F0F0,AE.x+30,AE.z+150,0,1);
+})();
+
+// --- Portal de entrada + Parque dos Ipês (trevo da BR-163, leste) ---
+const PO={x:X_BR163-90,z:0};
+(function portal(){
+  const arco=new THREE.Mesh(new THREE.TorusGeometry(26,2.4,10,28,Math.PI),
+    new THREE.MeshLambertMaterial({color:0xE8B25A}));
+  arco.position.set(PO.x-60,0,0);arco.castShadow=true;scene.add(arco);
+  const trevo=new THREE.Mesh(new THREE.RingGeometry(52,74,40),
+    new THREE.MeshLambertMaterial({color:0x40444C}));
+  trevo.rotation.x=-Math.PI/2;trevo.position.set(X_BR163,0.05,0);scene.add(trevo);
+  plano(104,104,0x4E7C33,X_BR163,0,0.02);                    // miolo verde do trevo
+})();
+
+// --- Córrego Água Boa (sudeste) com mata ciliar ---
+const corrego=[];
+(function aguaBoa(){
+  const pts=[];let x=340,z=ANEL_Z+40;
+  for(let k=0;k<26;k++){pts.push([x,z]);x+=55+rnd()*25;z+=70+Math.sin(k*0.55)*45;}
+  const mat=new THREE.MeshPhongMaterial({color:0x3E86A8,specular:0xFFDDAA,shininess:100});
+  for(let k=0;k<pts.length-1;k++){
+    const[ax,az]=pts[k],[bx,bz]=pts[k+1];
+    const L=Math.hypot(bx-ax,bz-az),ang=Math.atan2(bz-az,bx-ax);
+    const seg=new THREE.Mesh(new THREE.PlaneGeometry(L+6,12),mat);
+    seg.rotation.x=-Math.PI/2;seg.rotation.z=-ang;
+    seg.position.set((ax+bx)/2,0.18,(az+bz)/2);scene.add(seg);
+    corrego.push([(ax+bx)/2,(az+bz)/2]);
+  }
+})();
+
+// ============================================================
+// EDIFÍCIOS DO NÚCLEO — instancing
+// ============================================================
+const MAX_P=5200;
+const geoP=new THREE.BoxGeometry(1,1,1);geoP.translate(0,0.5,0);
+const predios=new THREE.InstancedMesh(geoP,
+  new THREE.MeshLambertMaterial({color:0xffffff}),MAX_P);
+predios.castShadow=predios.receiveShadow=true;
+const geoT=new THREE.BoxGeometry(1,1,1);geoT.translate(0,0.5,0);
+const telhados=new THREE.InstancedMesh(geoT,
+  new THREE.MeshLambertMaterial({color:0xffffff}),MAX_P);
+telhados.castShadow=true;
+const paleta=[0xEFE7D6,0xE4D6BC,0xD8CFC0,0xF1EDE3,0xC9BFA8,0xE9DDC8,0xDCCFB4];
+const paletaTorre=[0x9FB4C4,0x8AA3B8,0xB6C4CE,0x7E97AC];
+const corTelha=new THREE.Color(0xA6402B);
+const M=new THREE.Matrix4(),P=new THREE.Vector3(),
+      Q=new THREE.Quaternion(),E=new THREE.Vector3();
+let nP=0,nT=0;
+for(let i=0;i<NX;i++)for(let j=0;j<NZ;j++){
+  const bx=-LIM_X+PASSO/2+i*PASSO,bz=-LIM_Z+PASSO/2+j*PASSO;
+  if(Math.abs(bz)<AV_L/2+8)continue;
+  if(livre(bx,bz))continue;
+  const distC=Math.hypot(bx,bz)/PASSO;
+  for(let u=0;u<3;u++)for(let v=0;v<3;v++){
+    if(nP>=MAX_P)break;
+    const x=bx-BLOCO/2+16+u*34+(rnd()-0.5)*6;
+    const z=bz-BLOCO/2+16+v*34+(rnd()-0.5)*6;
+    if(livre(x,z))continue;
+    const pertoAv=Math.abs(bz)<PASSO*1.6, centro=distC<2.6, r=rnd();
+    let h;
+    if(centro&&r>0.9)h=40+rnd()*55;
+    else if(centro&&r>0.6)h=12+rnd()*18;
+    else if(pertoAv&&r>0.85)h=18+rnd()*30;
+    else if(r>0.94)h=15+rnd()*20;
+    else h=3.5+rnd()*4.5;
+    const w=14+rnd()*14,d=14+rnd()*14;
+    P.set(x,0,z);Q.identity();E.set(w,h,d);M.compose(P,Q,E);
+    predios.setMatrixAt(nP,M);
+    const torre=h>14;
+    const cor=new THREE.Color(torre?paletaTorre[(nP+i)%4]:paleta[(nP+j)%7]);
+    cor.offsetHSL(0,(rnd()-0.5)*0.03,(rnd()-0.5)*0.05);
+    predios.setColorAt(nP,cor);nP++;
+    if(!torre){
+      P.set(x,h,z);E.set(w*1.12,1.6,d*1.12);M.compose(P,Q,E);
+      telhados.setMatrixAt(nT,M);
+      telhados.setColorAt(nT,corTelha.clone().offsetHSL(0,0,(rnd()-0.5)*0.06));nT++;
+    }
+  }
+}
+predios.count=nP;telhados.count=nT;
+predios.instanceMatrix.needsUpdate=telhados.instanceMatrix.needsUpdate=true;
+if(predios.instanceColor)predios.instanceColor.needsUpdate=true;
+if(telhados.instanceColor)telhados.instanceColor.needsUpdate=true;
+scene.add(predios,telhados);
+
+// ============================================================
+// VEGETAÇÃO: ipês, figueiras centenárias e mata ciliar
+// ============================================================
+const MAX_A=1400;
+const troncoGeo=new THREE.CylinderGeometry(0.5,0.9,5,6);troncoGeo.translate(0,2.5,0);
+const copaGeo=new THREE.IcosahedronGeometry(4.2,1);copaGeo.translate(0,7.5,0);
+const troncos=new THREE.InstancedMesh(troncoGeo,
+  new THREE.MeshLambertMaterial({color:0x5B4632}),MAX_A);
+const copas=new THREE.InstancedMesh(copaGeo,
+  new THREE.MeshLambertMaterial({color:0xffffff}),MAX_A);
+copas.castShadow=true;
+let nA=0;
+const CIPE_AM=new THREE.Color(0xFFC63D),CIPE_RS=new THREE.Color(0xE96FA8),
+      CVERDE=new THREE.Color(0x5E8C3F),CFIG=new THREE.Color(0x2F5A28),
+      CCERRADO=new THREE.Color(0x7A8C46);
+function arvore(x,z,cor,s=1){
+  if(nA>=MAX_A)return;
+  P.set(x,0,z);Q.setFromAxisAngle(new THREE.Vector3(0,1,0),rnd()*6.28);
+  E.setScalar((0.7+rnd()*0.7)*s);M.compose(P,Q,E);
+  troncos.setMatrixAt(nA,M);copas.setMatrixAt(nA,M);
+  copas.setColorAt(nA,cor);nA++;
+}
+const mixIpe=()=>{const r=rnd();return r>0.62?CIPE_AM:r>0.3?CVERDE:CIPE_RS;};
+// canteiro da Marcelino Pires
+for(let x=-LIM_X-100;x<LIM_X+100;x+=26)arvore(x+(rnd()-0.5)*6,(rnd()-0.5)*4,mixIpe(),0.9);
+// FIGUEIRAS CENTENÁRIAS da Presidente Vargas (copas grandes e escuras)
+for(let z=-320;z<=320;z+=38){arvore(X_VARGAS-16,z,CFIG,2.1);arvore(X_VARGAS+16,z+19,CFIG,2.1);}
+// Parque do Lago e praça
+for(let k=0;k<120;k++){const a=rnd()*6.28,r=150+rnd()*80;
+  arvore(PQ.x+Math.cos(a)*r*1.25,PQ.z+Math.sin(a)*r*0.8,mixIpe());}
+for(let k=0;k<14;k++){const a=rnd()*6.28;
+  arvore(PR.x+Math.cos(a)*(38+rnd()*12),PR.z+Math.sin(a)*(38+rnd()*12),mixIpe());}
+// Parque dos Ipês no trevo de entrada (só ipês floridos)
+for(let k=0;k<70;k++){const a=rnd()*6.28,r=40+rnd()*130;
+  arvore(PO.x-140+Math.cos(a)*r,Math.sin(a)*r*0.8,rnd()>0.5?CIPE_AM:CIPE_RS,1.1);}
+// mata ciliar do Água Boa
+for(const[cx,cz]of corrego)for(let k=0;k<3;k++)
+  arvore(cx+(rnd()-0.5)*46,cz+(rnd()-0.5)*46,rnd()>0.85?CIPE_AM:CVERDE,0.9);
+// cerrado da Reserva
+for(let k=0;k<180;k++)
+  arvore(RI.x+(rnd()-0.5)*1900,RI.z+(rnd()-0.5)*1550,rnd()>0.9?CIPE_AM:CCERRADO,0.8);
+// campus e espalhadas no núcleo
+for(let k=0;k<60;k++)arvore(UF.x+(rnd()-0.5)*700,UF.z+(rnd()-0.5)*460,mixIpe());
+for(let k=0;k<330;k++){
+  const x=(rnd()-0.5)*2*LIM_X,z=(rnd()-0.5)*2*LIM_Z;
+  if(Math.abs(z)<AV_L/2+6)continue;arvore(x,z,mixIpe(),0.8);
+}
+troncos.count=copas.count=nA;
+troncos.instanceMatrix.needsUpdate=copas.instanceMatrix.needsUpdate=true;
+if(copas.instanceColor)copas.instanceColor.needsUpdate=true;
+scene.add(troncos,copas);
+
+// ---------- Lavouras (exceto ao norte: lá é a Reserva) ----------
+(function lavouras(){
+  const cores=[0xB7A23C,0x8FA23A,0x6E8C36,0xC2B04A,0x7A6A3C];
+  for(let k=0;k<110;k++){
+    const ang=rnd()*6.28;
+    if(Math.sin(ang)<-0.35)continue;                        // não invade a Reserva
+    const r=Math.max(LIM_X,LIM_Z)+380+rnd()*3600;
+    const t=plano(300+rnd()*520,220+rnd()*430,cores[k%5],
+      Math.cos(ang)*r,Math.sin(ang)*r,-0.1);
+  }
+  const terra=new THREE.MeshLambertMaterial({color:0x9C4A2F});
+  for(const ang of[0.35,1.05,2.7,3.9,5.2]){
+    const e=new THREE.Mesh(new THREE.PlaneGeometry(4200,12),terra);
+    e.rotation.x=-Math.PI/2;e.rotation.z=ang;
+    e.position.set(Math.cos(ang+1.57)*2500,0.015,Math.sin(ang+1.57)*2500);
+    scene.add(e);
+  }
+})();
+
+// ---------- Tráfego ----------
+const carros=[];
+const carroGeo=new THREE.BoxGeometry(4.4,1.7,2.2);carroGeo.translate(0,0.85,0);
+const coresCarro=[0xD9D9D9,0xC0392B,0x2C3E50,0xF0F0F0,0x7F8C8D,0xF39C12];
+function fazCarro(eixo,fixo,faixaA,faixaB,alcance){
+  const c=new THREE.Mesh(carroGeo,
+    new THREE.MeshLambertMaterial({color:coresCarro[carros.length%6]}));
+  c.castShadow=true;
+  const sentido=carros.length%2?1:-1;
+  c.userData={eixo,sentido,v:(0.35+rnd()*0.3)*sentido,pos:(rnd()-0.5)*2*alcance,
+    lado:sentido>0?faixaA:faixaB,alcance,fixo};
+  if(eixo==='z')c.rotation.y=Math.PI/2;
+  scene.add(c);carros.push(c);
+}
+for(let k=0;k<26;k++)fazCarro('x',0,AV_L/2-9,-AV_L/2+9,LIM_X+120);       // Marcelino
+for(let k=0;k<10;k++)fazCarro('z',X_HAYEL,5,-5,LIM_Z+120);               // Hayel
+for(let k=0;k<10;k++)fazCarro('x',0,7,-7,4400);                          // Guaicurus (oeste)
+carros.slice(-10).forEach(c=>c.userData.desloc=-2300);                    // centraliza no oeste
+
+// ============================================================
+// CÂMERA
+// ============================================================
+const alvo=new THREE.Vector3(0,10,0);
+let theta=-0.9,phi=0.42,dist=1350,modo='orbita';
+function aplicaCamera(){
+  camera.position.set(
+    alvo.x+dist*Math.cos(phi)*Math.cos(theta),
+    alvo.y+dist*Math.sin(phi),
+    alvo.z+dist*Math.cos(phi)*Math.sin(theta));
+  camera.lookAt(alvo);
+}
+aplicaCamera();
+
+const ptrs=new Map();let pinca=0;
+const el=renderer.domElement;
+el.addEventListener('contextmenu',e=>e.preventDefault());
+el.style.touchAction='none';
+el.addEventListener('pointerdown',e=>{
+  ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY,b:e.button});
+  if(ptrs.size===2){const[a,b]=[...ptrs.values()];pinca=Math.hypot(a.x-b.x,a.y-b.y);}
+  if(modo==='sobrevoo')setModo('livre');
+});
+addEventListener('pointerup',e=>ptrs.delete(e.pointerId));
+addEventListener('pointercancel',e=>ptrs.delete(e.pointerId));
+addEventListener('pointermove',e=>{
+  const p=ptrs.get(e.pointerId);if(!p)return;
+  const dx=e.clientX-p.x,dy=e.clientY-p.y;p.x=e.clientX;p.y=e.clientY;
+  if(ptrs.size===2){                                        // pinça = zoom
+    const[a,b]=[...ptrs.values()];const d=Math.hypot(a.x-b.x,a.y-b.y);
+    if(pinca)dist=Math.min(6500,Math.max(80,dist*pinca/d));
+    pinca=d;aplicaCamera();return;
+  }
+  if(p.b===2||e.shiftKey){
+    const k=dist*0.0012;
+    const dir=new THREE.Vector3(Math.cos(theta),0,Math.sin(theta));
+    const lado=new THREE.Vector3(-dir.z,0,dir.x);
+    alvo.addScaledVector(lado,-dx*k).addScaledVector(dir,dy*k);
+  }else{theta+=dx*0.005;phi=Math.min(1.45,Math.max(0.08,phi+dy*0.004));}
+  if(modo==='orbita')setModo('livre');
+  aplicaCamera();
+});
+el.addEventListener('wheel',e=>{
+  dist=Math.min(6500,Math.max(80,dist*(1+Math.sign(e.deltaY)*0.09)));
+  aplicaCamera();
+},{passive:true});
+
+// sobrevoo por toda a geografia real
+const rota=[
+  [AE.x,AE.z,   -2.9,0.34,900],   // aeroporto
+  [UF.x,UF.z,   -2.2,0.36,620],   // UFGD/UEMS
+  [BG.x,BG.z,   -1.7,0.32,420],   // brigada
+  [PQ.x,PQ.z,   -1.3,0.35,420],   // parque do lago
+  [PR.x,PR.z,   -0.6,0.30,260],   // praça + catedral
+  [X_VARGAS,0,   0.1,0.30,340],   // figueiras
+  [DO.x,DO.z,    0.8,0.36,420],   // Douradão
+  [RI.x,RI.z,    1.4,0.44,1300],  // Reserva
+  [PO.x,0,       2.2,0.32,460],   // portal BR-163
+  [0,0,          2.9,0.55,1500],
+];
+let tRota=0;
+function passoSobrevoo(dt){
+  tRota=(tRota+dt*0.045)%rota.length;
+  const i=Math.floor(tRota),f=tRota-i;
+  const a=rota[i],b=rota[(i+1)%rota.length],s=f*f*(3-2*f);
+  alvo.x=a[0]+(b[0]-a[0])*s;alvo.z=a[1]+(b[1]-a[1])*s;alvo.y=14;
+  let dth=b[2]-a[2];if(dth>Math.PI)dth-=6.283;if(dth<-Math.PI)dth+=6.283;
+  theta=a[2]+dth*s;phi=a[3]+(b[3]-a[3])*s;dist=a[4]+(b[4]-a[4])*s;
+  aplicaCamera();
+}
+
+// marcos com voo de câmera
+const listaMarcos=[
+  {nome:'Catedral N. Sra. da Conceição',cor:'#F3E9D8',x:CAT.x,z:CAT.z,d:230,ph:0.3},
+  {nome:'Praça Antônio João',cor:'#57813A',x:PR.x,z:PR.z,d:240,ph:0.42},
+  {nome:'Av. Marcelino Pires',cor:'#FFC63D',x:0,z:0,d:640,ph:0.24},
+  {nome:'Figueiras da Pres. Vargas',cor:'#2F5A28',x:X_VARGAS,z:0,d:300,ph:0.3},
+  {nome:'Parque do Lago (Antenor Martins)',cor:'#2E7DA6',x:PQ.x,z:PQ.z,d:500,ph:0.4},
+  {nome:'Shopping Avenida Center',cor:'#D8CFC0',x:SH.x,z:SH.z,d:340,ph:0.4},
+  {nome:'Estádio Douradão',cor:'#C9C2B2',x:DO.x,z:DO.z,d:420,ph:0.42},
+  {nome:'Reserva Indígena (Jaguapiru/Bororó)',cor:'#7A8C46',x:RI.x,z:RI.z,d:1400,ph:0.5},
+  {nome:'Córrego Água Boa',cor:'#3E86A8',x:900,z:ANEL_Z+500,d:600,ph:0.42},
+  {nome:'UFGD / UEMS / HU (Rod. Itahum km 12)',cor:'#1B6E4A',x:UF.x,z:UF.z,d:620,ph:0.4},
+  {nome:'4ª Brigada de Cavalaria',cor:'#8A8F76',x:BG.x,z:BG.z,d:420,ph:0.4},
+  {nome:'Aeroporto Fco. de Matos Pereira',cor:'#B9B9C0',x:AE.x,z:AE.z,d:900,ph:0.42},
+  {nome:'Portal de entrada · BR-163',cor:'#E8B25A',x:PO.x,z:0,d:420,ph:0.34},
+];
+let voo=null;
+const rotulo=document.getElementById('rotulo');
+const painelMarcos=document.getElementById('marcos');
+listaMarcos.forEach(mk=>{
+  const b=document.createElement('button');
+  b.innerHTML=`<span class="dot" style="background:${mk.cor}"></span>${mk.nome}`;
+  b.onclick=()=>{setModo('livre');
+    voo={t:0,a:{x:alvo.x,z:alvo.z,th:theta,ph:phi,d:dist},
+         b:{x:mk.x,z:mk.z,th:theta+0.6,ph:mk.ph,d:mk.d},mk};};
+  painelMarcos.appendChild(b);
+});
+function passoVoo(dt){
+  if(!voo)return;
+  voo.t=Math.min(1,voo.t+dt*0.5);
+  const s=voo.t*voo.t*(3-2*voo.t),a=voo.a,b=voo.b;
+  alvo.x=a.x+(b.x-a.x)*s;alvo.z=a.z+(b.z-a.z)*s;alvo.y=12;
+  theta=a.th+(b.th-a.th)*s;phi=a.ph+(b.ph-a.ph)*s;dist=a.d+(b.d-a.d)*s;
+  aplicaCamera();
+  if(voo.t>=1){
+    const p=new THREE.Vector3(voo.mk.x,30,voo.mk.z).project(camera);
+    rotulo.textContent=voo.mk.nome;
+    rotulo.style.left=((p.x*0.5+0.5)*innerWidth)+'px';
+    rotulo.style.top=((-p.y*0.5+0.5)*innerHeight)+'px';
+    rotulo.style.opacity=1;
+    setTimeout(()=>rotulo.style.opacity=0,2600);
+    voo=null;
+  }
+}
+
+const btns={sobrevoo:document.getElementById('btnSobrevoo'),
+            orbita:document.getElementById('btnOrbita'),
+            livre:document.getElementById('btnLivre')};
+function setModo(m){modo=m;
+  for(const k in btns)btns[k].classList.toggle('ativo',k===m);}
+btns.sobrevoo.onclick=()=>setModo('sobrevoo');
+btns.orbita.onclick=()=>setModo('orbita');
+btns.livre.onclick=()=>setModo('livre');
+
+// ---------- Loop ----------
+const clock=new THREE.Clock();
+const reduzMov=matchMedia('(prefers-reduced-motion: reduce)').matches;
+let primeiraFrame=true;
+function anim(){
+  requestAnimationFrame(anim);
+  const dt=Math.min(clock.getDelta(),0.05);
+  if(!reduzMov)for(const c of carros){
+    const u=c.userData;
+    u.pos+=u.v*dt*60;
+    if(u.pos>u.alcance+140)u.pos=-u.alcance-140;
+    if(u.pos<-u.alcance-140)u.pos=u.alcance+140;
+    const desloc=u.desloc||0;
+    if(u.eixo==='x'){c.position.x=u.pos+desloc;c.position.z=u.lado;}
+    else{c.position.z=u.pos;c.position.x=u.fixo+u.lado;}
+  }
+  if(modo==='orbita'&&!reduzMov){theta+=dt*0.06;aplicaCamera();}
+  if(modo==='sobrevoo'&&!reduzMov)passoSobrevoo(dt);
+  passoVoo(dt);
+  renderer.render(scene,camera);
+  if(primeiraFrame){primeiraFrame=false;
+    const bt=document.getElementById('boot');
+    bt.style.opacity=0;setTimeout(()=>bt.remove(),450);}
+}
+anim();
+
+addEventListener('resize',()=>{
+  camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+});
+
+}catch(e){ mostraErro(e.message); }
+}
+
+// three.js: se o cdnjs falhar, tenta o jsDelivr antes de desistir
+if(typeof THREE!=='undefined') iniciar();
+else{
+  const s=document.createElement('script');
+  s.src='https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js';
+  s.onload=iniciar;
+  s.onerror=()=>mostraErro('não foi possível baixar o three.js (cdnjs e jsDelivr). Verifique a conexão e recarregue.');
+  document.head.appendChild(s);
+}
+</script>
+</body>
+</html>

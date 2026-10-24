@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dourados 3D — Dados Reais (OpenStreetMap)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ipe:#FFC63D; --terra:#A6402B; --placa:#1B6E4A;
+    --noite:#101720; --nevoa:#F3E9D8;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:100%;height:100%;overflow:hidden;background:var(--noite);
+    font-family:'Archivo',-apple-system,'Segoe UI',Roboto,sans-serif;color:var(--nevoa)}
+  canvas{display:block}
+
+  .placa{
+    position:fixed;top:18px;left:18px;z-index:10;
+    background:var(--placa);border:3px solid #fff;border-radius:10px;
+    padding:10px 18px 12px;box-shadow:0 6px 18px rgba(0,0,0,.45);user-select:none;
+  }
+  .placa h1{font-size:26px;letter-spacing:.14em;font-weight:800;color:#fff;line-height:1}
+  .placa .sub{font-size:11px;letter-spacing:.08em;color:#DFF2E7;margin-top:5px}
+  .placa .km{display:inline-block;margin-top:6px;font-size:10px;background:#fff;
+    color:var(--placa);border-radius:4px;padding:2px 7px;font-weight:700;letter-spacing:.06em}
+
+  /* Tela inicial */
+  #inicio{
+    position:fixed;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;
+    background:radial-gradient(120% 120% at 50% 110%, #2A3A2A 0%, var(--noite) 55%);
+  }
+  #inicio .caixa{max-width:460px;width:calc(100% - 40px);
+    background:rgba(16,23,32,.9);border:1px solid rgba(243,233,216,.2);
+    border-radius:16px;padding:28px;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+  #inicio h2{font-size:15px;letter-spacing:.14em;color:var(--ipe);margin-bottom:10px}
+  #inicio p{font-size:13.5px;line-height:1.55;color:rgba(243,233,216,.85);margin-bottom:18px}
+  .opcoes{display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap}
+  .opcoes label{
+    flex:1;min-width:120px;cursor:pointer;text-align:center;font-size:12.5px;
+    border:1px solid rgba(243,233,216,.25);border-radius:10px;padding:10px 8px;
+  }
+  .opcoes input{display:none}
+  .opcoes label span{display:block;font-size:10px;color:rgba(243,233,216,.55);margin-top:3px}
+  .opcoes input:checked + b{color:var(--ipe)}
+  .opcoes label:has(input:checked){border-color:var(--ipe);background:rgba(255,198,61,.1)}
+  #carregar{
+    width:100%;background:var(--ipe);border:none;border-radius:10px;color:var(--noite);
+    font-size:14px;font-weight:800;letter-spacing:.05em;padding:13px;cursor:pointer;
+    font-family:inherit;
+  }
+  #carregar:hover{filter:brightness(1.08)}
+  #status{margin-top:14px;font-size:12px;color:rgba(243,233,216,.7);min-height:32px;line-height:1.5}
+  #status.erro{color:#F08A7A}
+  .barra{height:4px;background:rgba(243,233,216,.15);border-radius:2px;margin-top:8px;overflow:hidden;display:none}
+  .barra i{display:block;height:100%;width:35%;background:var(--ipe);border-radius:2px;
+    animation:vai 1.1s ease-in-out infinite alternate}
+  @keyframes vai{from{margin-left:0}to{margin-left:65%}}
+
+  /* HUD pós-carga */
+  .painel{
+    position:fixed;z-index:10;background:rgba(16,23,32,.82);backdrop-filter:blur(8px);
+    border:1px solid rgba(243,233,216,.18);border-radius:12px;padding:12px 14px;display:none;
+  }
+  #stats{bottom:18px;left:18px;font-size:12.5px;line-height:1.7}
+  #stats h2{font-size:10px;letter-spacing:.18em;text-transform:uppercase;
+    color:var(--ipe);margin-bottom:8px;font-weight:700}
+  #stats b{color:var(--ipe);font-variant-numeric:tabular-nums}
+  #stats .fonte{margin-top:8px;font-size:10.5px;color:rgba(243,233,216,.55)}
+  #dica{
+    position:fixed;bottom:18px;right:18px;z-index:10;font-size:11px;color:rgba(243,233,216,.65);
+    background:rgba(16,23,32,.6);padding:7px 11px;border-radius:8px;display:none;
+  }
+  #modos{top:18px;right:18px;display:none;gap:8px;padding:8px}
+  #modos button{
+    background:rgba(243,233,216,.08);border:1px solid rgba(243,233,216,.25);
+    color:var(--nevoa);font-size:12px;padding:7px 12px;border-radius:8px;cursor:pointer;
+    font-family:inherit;
+  }
+  #modos button.ativo{background:var(--ipe);border-color:var(--ipe);color:var(--noite);font-weight:700}
+  @media(max-width:640px){ .placa h1{font-size:19px} #dica{display:none!important} }
+</style>
+</head>
+<body>
+
+<div class="placa">
+  <h1>DOURADOS</h1>
+  <div class="sub">Mato Grosso do Sul · 22°13′S 54°48′W</div>
+  <span class="km">PROJETO 2 · DADOS REAIS · OPENSTREETMAP</span>
+</div>
+
+<div id="inicio">
+  <div class="caixa">
+    <h2>ERGUER A CIDADE COM DADOS REAIS</h2>
+    <p>Este app consulta a API Overpass do <b>OpenStreetMap</b> e extruda em 3D os
+       edifícios reais cadastrados em Dourados — contornos, alturas e vias como
+       mapeados pela comunidade. Escolha a área e carregue.</p>
+    <div class="opcoes">
+      <label><input type="radio" name="area" value="1200" checked><b>Centro</b><span>raio 1,2 km · rápido</span></label>
+      <label><input type="radio" name="area" value="2000"><b>Ampliado</b><span>raio 2 km</span></label>
+      <label><input type="radio" name="area" value="3200"><b>Cidade</b><span>raio 3,2 km · pesado</span></label>
+    </div>
+    <button id="carregar">Baixar dados e construir em 3D</button>
+    <div id="status"></div>
+    <div class="barra" id="barra"><i></i></div>
+  </div>
+</div>
+
+<div class="painel" id="stats">
+  <h2>Dados reais carregados</h2>
+  <div>Edifícios extrudados: <b id="sEd">–</b></div>
+  <div>Trechos de via: <b id="sVia">–</b></div>
+  <div>Nós de geometria: <b id="sNo">–</b></div>
+  <div>Tempo de construção: <b id="sT">–</b></div>
+  <div class="fonte">Dados: © colaboradores do OpenStreetMap (ODbL)</div>
+</div>
+
+<div class="painel" id="modos">
+  <button id="btnOrbita" class="ativo">⟳ Órbita</button>
+  <button id="btnLivre">✋ Livre</button>
+</div>
+
+<div id="dica">arraste: girar · scroll: zoom · botão direito: mover</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+'use strict';
+// ============================================================
+// DOURADOS 3D — dados reais do OpenStreetMap (API Overpass)
+// A cidade é erguida a partir dos contornos e alturas reais
+// dos edifícios mapeados, como no caso viral de Nova York.
+// ============================================================
+
+// Centro de referência: região da Praça Antônio João
+const LAT0 = -22.2211, LON0 = -54.8056;
+const KX = 111320*Math.cos(LAT0*Math.PI/180); // m por grau de longitude
+const KZ = 110574;                            // m por grau de latitude
+const px = lon => (lon-LON0)*KX;              // x: leste
+const pz = lat => -(lat-LAT0)*KZ;             // z: sul (norte = -z)
+
+const ENDPOINTS = [
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
+];
+
+// ---------- Cena ----------
+const scene = new THREE.Scene();
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setSize(innerWidth,innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+const camera = new THREE.PerspectiveCamera(55, innerWidth/innerHeight, 1, 20000);
+
+// céu de fim de tarde
+const skyMat = new THREE.ShaderMaterial({
+  side:THREE.BackSide, depthWrite:false,
+  uniforms:{topo:{value:new THREE.Color(0x1E3A5C)},
+            meio:{value:new THREE.Color(0xE8804F)},
+            base:{value:new THREE.Color(0xFFC97A)}},
+  vertexShader:`varying vec3 vP;void main(){vP=position;
+    gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+  fragmentShader:`varying vec3 vP;uniform vec3 topo,meio,base;
+    void main(){float h=normalize(vP).y;
+      vec3 c=h<0.12?mix(base,meio,smoothstep(-0.05,0.12,h))
+                   :mix(meio,topo,smoothstep(0.12,0.65,h));
+      gl_FragColor=vec4(c,1.0);}`
+});
+scene.add(new THREE.Mesh(new THREE.SphereGeometry(9000,24,16), skyMat));
+scene.fog = new THREE.FogExp2(0xEFB98A, 0.00026);
+
+const luzSol = new THREE.DirectionalLight(0xFFD9A8, 1.3);
+luzSol.position.set(-1600, 1100, 500);
+luzSol.castShadow = true;
+luzSol.shadow.mapSize.set(2048,2048);
+const S=1600;
+Object.assign(luzSol.shadow.camera,{left:-S,right:S,top:S,bottom:-S,near:100,far:5000});
+luzSol.shadow.camera.updateProjectionMatrix();
+scene.add(luzSol);
+scene.add(new THREE.HemisphereLight(0xFFCF9E, 0x2E4A2B, 0.55));
+scene.add(new THREE.AmbientLight(0x557799, 0.3));
+
+const chao = new THREE.Mesh(new THREE.PlaneGeometry(16000,16000),
+  new THREE.MeshLambertMaterial({color:0x55703A}));
+chao.rotation.x=-Math.PI/2; chao.position.y=-0.3; chao.receiveShadow=true;
+scene.add(chao);
+
+// ---------- Overpass ----------
+function montaQuery(raioM){
+  const dLat = raioM/KZ, dLon = raioM/KX;
+  const s=LAT0-dLat, w=LON0-dLon, n=LAT0+dLat, e=LON0+dLon;
+  const bb=`(${s},${w},${n},${e})`;
+  return `[out:json][timeout:120];
+(
+  way["building"]${bb};
+  relation["building"]${bb};
+  way["highway"]${bb};
+  way["natural"="water"]${bb};
+  way["water"]${bb};
+  way["leisure"~"^(park|garden|pitch|stadium)$"]${bb};
+  way["landuse"~"^(grass|forest|meadow|recreation_ground|cemetery)$"]${bb};
+);
+out geom;`;
+}
+
+async function baixaOSM(raioM, status){
+  const query = montaQuery(raioM);
+  let erroFinal=null;
+  for(const url of ENDPOINTS){
+    try{
+      status(`Consultando ${new URL(url).host}…`);
+      const r = await fetch(url,{method:'POST',
+        headers:{'Content-Type':'application/x-www-form-urlencoded'},
+        body:'data='+encodeURIComponent(query)});
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      status('Recebendo geometria…');
+      return await r.json();
+    }catch(e){ erroFinal=e; }
+  }
+  throw erroFinal || new Error('Falha na consulta');
+}
+
+// ---------- Alturas ----------
+function alturaDe(tags, id){
+  if(tags.height){ const h=parseFloat(String(tags.height).replace(',','.'));
+    if(h>0) return Math.min(h,140); }
+  if(tags['building:levels']){ const n=parseFloat(tags['building:levels']);
+    if(n>0) return Math.min(n*3.2+1.5, 140); }
+  const t=tags.building;
+  if(t==='church'||t==='cathedral') return 16;
+  if(t==='apartments') return 21;
+  if(t==='commercial'||t==='retail'||t==='office') return 7.5;
+  if(t==='industrial'||t==='warehouse') return 8;
+  // pseudoaleatório estável por id: casario de 1 pavimento com variação
+  const r = Math.abs(Math.sin(id*12.9898)*43758.5453)%1;
+  return 3.4 + r*3.2;
+}
+function corDe(tags, id, h){
+  const r = Math.abs(Math.sin(id*78.233)*12543.21)%1;
+  const c = new THREE.Color();
+  if(h>15)      c.setHex([0x9FB4C4,0x8AA3B8,0xB6C4CE][id%3]);       // torres
+  else if(tags.building==='church'||tags.building==='cathedral') c.setHex(0xF2EEE2);
+  else if(tags.building==='industrial'||tags.building==='warehouse') c.setHex(0xB8B2A4);
+  else          c.setHex([0xEFE7D6,0xE4D6BC,0xD8CFC0,0xE9DDC8,0xDCCFB4][id%5]);
+  c.offsetHSL(0,(r-0.5)*0.04,(r-0.5)*0.07);
+  return c;
+}
+
+// ---------- Construção da malha (geometrias mescladas) ----------
+function extrudaPoligonos(polys){ // polys: [{pts:[{x,z}], h, cor}]
+  const pos=[], nor=[], col=[];
+  const shape = new THREE.Shape();
+  for(const p of polys){
+    if(p.pts.length<3) continue;
+    shape.curves.length=0;
+    const s=new THREE.Shape();
+    s.moveTo(p.pts[0].x, -p.pts[0].z);
+    for(let i=1;i<p.pts.length;i++) s.lineTo(p.pts[i].x, -p.pts[i].z);
+    let g;
+    try{
+      g = p.h>0
+        ? new THREE.ExtrudeGeometry(s,{depth:p.h,bevelEnabled:false})
+        : new THREE.ShapeGeometry(s);
+    }catch(e){ continue; }
+    g.rotateX(-Math.PI/2);          // sobe no eixo Y; shape.y → -z
+    g = g.toNonIndexed();
+    g.computeVertexNormals();
+    const P=g.attributes.position.array, N=g.attributes.normal.array;
+    for(let i=0;i<P.length;i+=3){
+      pos.push(P[i],P[i+1],P[i+2]);
+      nor.push(N[i],N[i+1],N[i+2]);
+      col.push(p.cor.r,p.cor.g,p.cor.b);
+    }
+    g.dispose();
+  }
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos,3));
+  geo.setAttribute('normal',   new THREE.Float32BufferAttribute(nor,3));
+  geo.setAttribute('color',    new THREE.Float32BufferAttribute(col,3));
+  return geo;
+}
+
+function corVia(tags){
+  const h=tags.highway;
+  if(h==='primary'||h==='trunk')   return new THREE.Color(0xFFC63D);
+  if(h==='secondary')              return new THREE.Color(0xE8B06A);
+  if(h==='tertiary')               return new THREE.Color(0xC9B99A);
+  if(h==='residential'||h==='unclassified') return new THREE.Color(0x8A8A92);
+  return new THREE.Color(0x5F5F66);
+}
+
+function constroi(osm){
+  const t0=performance.now();
+  let nEd=0, nVia=0, nNo=0;
+
+  const edificios=[], verdes=[], aguas=[];
+  const viaPos=[], viaCol=[];
+
+  const trataPoligono=(el, pts)=>{
+    nNo+=pts.length;
+    const tags=el.tags||{};
+    if(tags.building!==undefined){
+      const h=alturaDe(tags, el.id);
+      edificios.push({pts, h, cor:corDe(tags, el.id, h)}); nEd++;
+    } else if(tags.natural==='water'||tags.water){
+      aguas.push({pts, h:0, cor:new THREE.Color(0x2E7DA6)});
+    } else {
+      verdes.push({pts, h:0, cor:new THREE.Color(0x4E7C33)});
+    }
+  };
+
+  for(const el of osm.elements){
+    if(el.type==='way' && el.geometry){
+      const pts = el.geometry.map(g=>({x:px(g.lon), z:pz(g.lat)}));
+      const tags=el.tags||{};
+      const fechado = el.geometry.length>3 &&
+        el.geometry[0].lat===el.geometry[el.geometry.length-1].lat &&
+        el.geometry[0].lon===el.geometry[el.geometry.length-1].lon;
+      if(tags.highway){
+        nVia++; nNo+=pts.length;
+        const c=corVia(tags);
+        for(let i=0;i<pts.length-1;i++){
+          viaPos.push(pts[i].x,0.4,pts[i].z, pts[i+1].x,0.4,pts[i+1].z);
+          viaCol.push(c.r,c.g,c.b, c.r,c.g,c.b);
+        }
+      } else if(fechado){
+        trataPoligono(el, pts.slice(0,-1));
+      }
+    }
+    if(el.type==='relation' && el.tags && el.tags.building!==undefined && el.members){
+      for(const m of el.members){
+        if(m.type==='way' && m.role==='outer' && m.geometry){
+          const pts=m.geometry.map(g=>({x:px(g.lon), z:pz(g.lat)}));
+          trataPoligono(el, pts);
+        }
+      }
+    }
+  }
+
+  // áreas verdes e água (planas)
+  const geoVerde=extrudaPoligonos(verdes); geoVerde.translate(0,0.08,0);
+  scene.add(new THREE.Mesh(geoVerde,
+    new THREE.MeshLambertMaterial({vertexColors:true})));
+  const geoAgua=extrudaPoligonos(aguas); geoAgua.translate(0,0.15,0);
+  scene.add(new THREE.Mesh(geoAgua,
+    new THREE.MeshPhongMaterial({vertexColors:true, specular:0xFFDDAA, shininess:110})));
+
+  // vias
+  const geoVia=new THREE.BufferGeometry();
+  geoVia.setAttribute('position', new THREE.Float32BufferAttribute(viaPos,3));
+  geoVia.setAttribute('color',    new THREE.Float32BufferAttribute(viaCol,3));
+  scene.add(new THREE.LineSegments(geoVia,
+    new THREE.LineBasicMaterial({vertexColors:true, transparent:true, opacity:0.85})));
+
+  // edifícios reais
+  const geoEd=extrudaPoligonos(edificios);
+  const malhaEd=new THREE.Mesh(geoEd,
+    new THREE.MeshLambertMaterial({vertexColors:true}));
+  malhaEd.castShadow=malhaEd.receiveShadow=true;
+  scene.add(malhaEd);
+
+  const dt=((performance.now()-t0)/1000).toFixed(1);
+  return {nEd, nVia, nNo, dt};
+}
+
+// ---------- Câmera: órbita manual ----------
+const alvo=new THREE.Vector3(0,8,0);
+let theta=-0.9, phi=0.5, dist=1400, modo='orbita';
+function aplicaCamera(){
+  camera.position.set(
+    alvo.x+dist*Math.cos(phi)*Math.cos(theta),
+    alvo.y+dist*Math.sin(phi),
+    alvo.z+dist*Math.cos(phi)*Math.sin(theta));
+  camera.lookAt(alvo);
+}
+aplicaCamera();
+let drag=null;
+const el=renderer.domElement;
+el.addEventListener('contextmenu',e=>e.preventDefault());
+el.addEventListener('pointerdown',e=>drag={x:e.clientX,y:e.clientY,b:e.button});
+addEventListener('pointerup',()=>drag=null);
+addEventListener('pointermove',e=>{
+  if(!drag) return;
+  const dx=e.clientX-drag.x, dy=e.clientY-drag.y; drag.x=e.clientX; drag.y=e.clientY;
+  if(drag.b===2||e.shiftKey){
+    const k=dist*0.0012;
+    const dir=new THREE.Vector3(Math.cos(theta),0,Math.sin(theta));
+    const lado=new THREE.Vector3(-dir.z,0,dir.x);
+    alvo.addScaledVector(lado,-dx*k).addScaledVector(dir,dy*k);
+  } else { theta+=dx*0.005; phi=Math.min(1.45,Math.max(0.06,phi+dy*0.004)); }
+  setModo('livre'); aplicaCamera();
+});
+el.addEventListener('wheel',e=>{
+  dist=Math.min(6000,Math.max(60,dist*(1+Math.sign(e.deltaY)*0.09)));
+  aplicaCamera();
+},{passive:true});
+function setModo(m){ modo=m;
+  btnOrbita.classList.toggle('ativo',m==='orbita');
+  btnLivre.classList.toggle('ativo',m==='livre'); }
+btnOrbita.onclick=()=>setModo('orbita');
+btnLivre.onclick =()=>setModo('livre');
+
+const clock=new THREE.Clock();
+const reduzMov=matchMedia('(prefers-reduced-motion: reduce)').matches;
+(function anim(){
+  requestAnimationFrame(anim);
+  const dt=Math.min(clock.getDelta(),0.05);
+  if(modo==='orbita' && !reduzMov){ theta+=dt*0.05; aplicaCamera(); }
+  renderer.render(scene,camera);
+})();
+addEventListener('resize',()=>{
+  camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+});
+
+// ---------- Fluxo de carga ----------
+const elStatus=document.getElementById('status');
+const barra=document.getElementById('barra');
+document.getElementById('carregar').onclick=async()=>{
+  const raio=parseInt(document.querySelector('input[name=area]:checked').value);
+  const botao=document.getElementById('carregar');
+  botao.disabled=true; botao.style.opacity=0.6;
+  elStatus.classList.remove('erro'); barra.style.display='block';
+  const status=t=>elStatus.textContent=t;
+  try{
+    const osm=await baixaOSM(raio, status);
+    status('Extrudando edifícios…');
+    await new Promise(r=>setTimeout(r,30)); // deixa a UI respirar
+    const r=constroi(osm);
+    // HUD
+    document.getElementById('inicio').style.display='none';
+    for(const id of ['stats','modos']) document.getElementById(id).style.display='block';
+    document.getElementById('modos').style.display='flex';
+    document.getElementById('dica').style.display='block';
+    sEd.textContent = r.nEd.toLocaleString('pt-BR');
+    sVia.textContent= r.nVia.toLocaleString('pt-BR');
+    sNo.textContent = r.nNo.toLocaleString('pt-BR');
+    sT.textContent  = r.dt+' s';
+    dist=Math.max(900, raio*0.9); aplicaCamera();
+  }catch(e){
+    barra.style.display='none';
+    elStatus.classList.add('erro');
+    elStatus.textContent='Não foi possível consultar a API Overpass ('+e.message+'). '+
+      'Verifique sua conexão — e, se estiver rodando dentro de um preview restrito, '+
+      'abra este arquivo HTML diretamente no navegador (duplo clique) e tente de novo.';
+    botao.disabled=false; botao.style.opacity=1;
+  }
+};
+</script>
+</body>
+</html>
